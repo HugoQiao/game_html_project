@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>五子棋</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; background: #1a1a2e; font-family: 'Segoe UI', sans-serif;
+  }
+  .container { text-align: center; }
+  .header {
+    display: flex; justify-content: center; gap: 24px;
+    margin-bottom: 12px; align-items: center;
+  }
+  .turn-indicator {
+    background: #16213e; color: #fff; padding: 8px 20px;
+    border-radius: 8px; font-size: 18px; font-weight: bold;
+  }
+  .stone {
+    display: inline-block; width: 18px; height: 18px; border-radius: 50%;
+    vertical-align: middle; margin-right: 4px;
+  }
+  .stone.black { background: #222; border: 2px solid #555; }
+  .stone.white { background: #eee; border: 2px solid #ccc; }
+  .btn {
+    background: #e94560; color: #fff; border: none; padding: 8px 20px;
+    border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold;
+  }
+  .btn:hover { background: #c73652; }
+  canvas {
+    border: 2px solid #0f3460; border-radius: 4px;
+    background: #dcb35c; display: block; cursor: pointer;
+  }
+  .footer { margin-top: 12px; color: #aaa; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="turn-indicator" id="turn">
+      <span class="stone black"></span> 黑棋回合
+    </div>
+    <button class="btn" onclick="restart()">重新开始</button>
+  </div>
+  <canvas id="canvas" width="600" height="600"></canvas>
+  <div class="footer">点击棋盘落子 &nbsp;|&nbsp; 先连成五子者获胜</div>
+</div>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const turnEl = document.getElementById('turn');
+
+const SIZE = 15;
+const CELL = canvas.width / (SIZE + 1);
+const RADIUS = CELL * 0.42;
+const OFFSET = CELL;
+
+let board, currentPlayer, gameOver, winner;
+
+function init() {
+  board = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+  currentPlayer = 'black';
+  gameOver = false;
+  winner = null;
+  updateTurn();
+  draw();
+}
+
+function updateTurn() {
+  if (gameOver) {
+    turnEl.innerHTML = winner
+      ? `<span class="stone ${winner}"></span> ${winner === 'black' ? '黑棋' : '白棋'} 获胜！`
+      : '平局！';
+    turnEl.style.color = '#f0a500';
+  } else {
+    turnEl.innerHTML = `<span class="stone ${currentPlayer}"></span> ${currentPlayer === 'black' ? '黑棋' : '白棋'} 回合`;
+    turnEl.style.color = '#fff';
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // grid lines
+  ctx.strokeStyle = '#8b6914';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < SIZE; i++) {
+    const pos = OFFSET + i * CELL;
+    ctx.beginPath();
+    ctx.moveTo(OFFSET, pos);
+    ctx.lineTo(OFFSET + (SIZE - 1) * CELL, pos);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(pos, OFFSET);
+    ctx.lineTo(pos, OFFSET + (SIZE - 1) * CELL);
+    ctx.stroke();
+  }
+
+  // star points
+  const stars = [[3, 3], [3, 7], [3, 11], [7, 3], [7, 7], [7, 11], [11, 3], [11, 7], [11, 11]];
+  ctx.fillStyle = '#8b6914';
+  stars.forEach(([r, c]) => {
+    ctx.beginPath();
+    ctx.arc(OFFSET + c * CELL, OFFSET + r * CELL, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // stones
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (!board[r][c]) continue;
+      const x = OFFSET + c * CELL;
+      const y = OFFSET + r * CELL;
+      const grad = ctx.createRadialGradient(x - 2, y - 2, 0, x, y, RADIUS);
+      if (board[r][c] === 'black') {
+        grad.addColorStop(0, '#555');
+        grad.addColorStop(1, '#111');
+      } else {
+        grad.addColorStop(0, '#fff');
+        grad.addColorStop(1, '#bbb');
+      }
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#666';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  // last move marker
+  if (lastMove) {
+    const { r, c } = lastMove;
+    const x = OFFSET + c * CELL;
+    const y = OFFSET + r * CELL;
+    ctx.strokeStyle = '#e94560';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+let lastMove = null;
+
+const DIRS = [[0, 1], [1, 0], [1, 1], [1, -1]];
+
+function checkWin(r, c, player) {
+  for (const [dr, dc] of DIRS) {
+    let count = 1;
+    for (let i = 1; i < 5; i++) {
+      const nr = r + dr * i, nc = c + dc * i;
+      if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && board[nr][nc] === player) count++;
+      else break;
+    }
+    for (let i = 1; i < 5; i++) {
+      const nr = r - dr * i, nc = c - dc * i;
+      if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && board[nr][nc] === player) count++;
+      else break;
+    }
+    if (count >= 5) return true;
+  }
+  return false;
+}
+
+function isBoardFull() {
+  return board.every(row => row.every(cell => cell !== null));
+}
+
+canvas.addEventListener('click', e => {
+  if (gameOver) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  const c = Math.round((mx - OFFSET) / CELL);
+  const r = Math.round((my - OFFSET) / CELL);
+
+  if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return;
+  if (board[r][c]) return;
+
+  board[r][c] = currentPlayer;
+  lastMove = { r, c };
+  draw();
+
+  if (checkWin(r, c, currentPlayer)) {
+    gameOver = true;
+    winner = currentPlayer;
+    updateTurn();
+    return;
+  }
+  if (isBoardFull()) {
+    gameOver = true;
+    winner = null;
+    updateTurn();
+    return;
+  }
+
+  currentPlayer = currentPlayer === 'black' ? 'white' : 'black';
+  updateTurn();
+});
+
+function restart() {
+  lastMove = null;
+  init();
+}
+
+init();
+</script>
+</body>
+</html>
